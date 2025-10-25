@@ -62,27 +62,52 @@
 
             const platformMapping = {
                 'NES': { brand: 'Nintendo', console: 'NES' },
+                'Nintendo Entertainment System (NES)': { brand: 'Nintendo', console: 'NES' },
                 'SNES': { brand: 'Nintendo', console: 'SNES' },
                 'Super Nintendo Entertainment System': { brand: 'Nintendo', console: 'SNES' },
+                'Super Famicom': { brand: 'Nintendo', console: 'SNES' },
                 'Nintendo 64': { brand: 'Nintendo', console: 'N64' },
+                'N64': { brand: 'Nintendo', console: 'N64' },
+                'Nintendo GameCube': { brand: 'Nintendo', console: 'GameCube' },
                 'GameCube': { brand: 'Nintendo', console: 'GameCube' },
                 'Wii': { brand: 'Nintendo', console: 'Wii' },
+                'Nintendo Wii': { brand: 'Nintendo', console: 'Wii' },
                 'Game Boy': { brand: 'Nintendo', console: 'Game Boy' },
                 'Game Boy Color': { brand: 'Nintendo', console: 'Game Boy Color' },
                 'Game Boy Advance': { brand: 'Nintendo', console: 'Game Boy Advance' },
                 'Nintendo DS': { brand: 'Nintendo', console: 'DS' },
                 'Sega Master System': { brand: 'Sega', console: 'Master System' },
+                'Master System': { brand: 'Sega', console: 'Master System' },
                 'Sega Mega Drive/Genesis': { brand: 'Sega', console: 'Mega Drive/Genesis' },
                 'Sega Genesis': { brand: 'Sega', console: 'Mega Drive/Genesis' },
+                'Sega Mega Drive': { brand: 'Sega', console: 'Mega Drive/Genesis' },
+                'Genesis': { brand: 'Sega', console: 'Mega Drive/Genesis' },
+                'Mega Drive': { brand: 'Sega', console: 'Mega Drive/Genesis' },
                 'Sega Saturn': { brand: 'Sega', console: 'Saturn' },
+                'Saturn': { brand: 'Sega', console: 'Saturn' },
                 'Dreamcast': { brand: 'Sega', console: 'Dreamcast' },
+                'Sega Dreamcast': { brand: 'Sega', console: 'Dreamcast' },
                 'Sega Game Gear': { brand: 'Sega', console: 'Game Gear' },
+                'Game Gear': { brand: 'Sega', console: 'Game Gear' },
                 'PlayStation': { brand: 'Sony', console: 'PlayStation' },
+                'PS1': { brand: 'Sony', console: 'PlayStation' },
                 'PlayStation 2': { brand: 'Sony', console: 'PlayStation 2' },
                 'PS2': { brand: 'Sony', console: 'PlayStation 2' },
+                'PlayStation Portable': { brand: 'Sony', console: 'PSP' },
                 'PSP': { brand: 'Sony', console: 'PSP' },
                 'Xbox': { brand: 'Microsoft', console: 'Xbox' },
                 'Xbox 360': { brand: 'Microsoft', console: 'Xbox 360' },
+                'Atari 2600': { brand: 'Atari', console: '2600' },
+                'Atari 5200': { brand: 'Atari', console: '5200' },
+                'Atari 7800': { brand: 'Atari', console: '7800' },
+                'Atari Lynx': { brand: 'Atari', console: 'Lynx' },
+                'Atari Jaguar': { brand: 'Atari', console: 'Jaguar' },
+                'PC Engine': { brand: 'NEC', console: 'PC Engine' },
+                'TurboGrafx-16/PC Engine': { brand: 'NEC', console: 'PC Engine' },
+                'TurboGrafx-16': { brand: 'NEC', console: 'TurboGrafx-16' },
+                'Neo Geo': { brand: 'SNK', console: 'Neo Geo' },
+                'Neo Geo Pocket': { brand: 'SNK', console: 'Neo Geo Pocket' },
+                'Neo Geo Pocket Color': { brand: 'SNK', console: 'Neo Geo Pocket' },
             };
 
             useEffect(() => {
@@ -114,6 +139,7 @@
                 }
                 setSearchingIGDB(true);
                 try {
+                    console.log('🔍 Recherche IGDB pour:', query);
                     const response = await fetch(PROXY_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -122,11 +148,21 @@
                             body: `search "${query}"; fields name,cover.url,platforms.name; limit 10;`
                         })
                     });
-                    if (!response.ok) throw new Error('Erreur API');
+                    
+                    console.log('📡 Réponse:', response.status, response.statusText);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('❌ Erreur API:', errorText);
+                        throw new Error(`Erreur ${response.status}: ${errorText}`);
+                    }
+                    
                     const data = await response.json();
+                    console.log('✅ Données reçues:', data);
                     setIgdbResults(data || []);
                 } catch (error) {
-                    console.error('Erreur IGDB:', error);
+                    console.error('❌ Erreur IGDB complète:', error);
+                    alert(`Erreur IGDB: ${error.message}\n\nVérifiez:\n1. Les variables d'environnement (TWITCH_CLIENT_ID et TWITCH_CLIENT_SECRET)\n2. Que vous avez redéployé après les avoir ajoutées`);
                     setIgdbResults([]);
                 } finally {
                     setSearchingIGDB(false);
