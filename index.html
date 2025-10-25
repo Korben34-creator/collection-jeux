@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collection Jeux Vidéo Rétro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        select option { background-color: white; color: black; }
+        select { color: white; }
+        select:invalid { color: rgba(191, 219, 254, 0.7); }
+        .stat-card { background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); backdrop-filter: blur(10px); transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); }
+        .search-result { cursor: pointer; transition: background-color 0.2s; }
+        .search-result:hover { background-color: rgba(255, 255, 255, 0.2); }
+        .game-cover { width: 60px; height: 80px; object-fit: cover; border-radius: 4px; }
+        .tab-button { transition: all 0.3s; }
+        .tab-button.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div id="app"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const PROXY_URL = '/.netlify/functions/igdb-proxy';
+
+        function RetroGamesApp() {
+            const [games, setGames] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [editingId, setEditingId] = useState(null);
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [showStats, setShowStats] = useState(false);
+            const [searchingPrice, setSearchingPrice] = useState(null);
+            const [igdbSearchTerm, setIgdbSearchTerm] = useState('');
+            const [igdbResults, setIgdbResults] = useState([]);
+            const [searchingIGDB, setSearchingIGDB] = useState(false);
+            const [activeTab, setActiveTab] = useState('all');
+            const [activeBrand, setActiveBrand] = useState(null);
+            const [newGame, setNewGame] = useState({
+                title: '', brand: '', console: '', barcode: '', price: '', condition: 'Bon', notes: '', cover: '', type: 'jeu'
+            });
+
+            const searchTimeoutRef = useRef(null);
+            const brands = ['Nintendo', 'Sega', 'Sony', 'Microsoft', 'Atari', 'NEC', 'SNK'];
+            const consoles = {
+                Nintendo: ['NES', 'SNES', 'N64', 'GameCube', 'Wii', 'Game Boy', 'Game Boy Color', 'Game Boy Advance', 'DS'],
+                Sega: ['Master System', 'Mega Drive/Genesis', 'Saturn', 'Dreamcast', 'Game Gear'],
+                Sony: ['PlayStation', 'PlayStation 2', 'PSP'],
+                Microsoft: ['Xbox', 'Xbox 360'],
+                Atari: ['2600', '5200', '7800', 'Lynx', 'Jaguar'],
+                NEC: ['PC Engine', 'TurboGrafx-16'],
+                SNK: ['Neo Geo', 'Neo Geo Pocket']
+            };
+            const conditions = ['Neuf', 'Excellent', 'Très bon', 'Bon', 'Acceptable', 'Mauvais'];
+
+            const platformMapping = {
+                'NES': { brand: 'Nintendo', console: 'NES' },
+                'SNES': { brand: 'Nintendo', console: 'SNES' },
+                'Super Nintendo Entertainment System': { brand: 'Nintendo', console: 'SNES' },
+                'Nintendo 64': { brand: 'Nintendo', console: 'N64' },
+                'GameCube': { brand: 'Nintendo', console: 'GameCube' },
+                'Wii': { brand: 'Nintendo', console: 'Wii' },
+                'Game Boy': { brand: 'Nintendo', console: 'Game Boy' },
+                'Game Boy Color': { brand: 'Nintendo', console: 'Game Boy Color' },
+                'Game Boy Advance': { brand: 'Nintendo', console: 'Game Boy Advance' },
+                'Nintendo DS': { brand: 'Nintendo', console: 'DS' },
+                'Sega Master System': { brand: 'Sega', console: 'Master System' },
+                'Sega Mega Drive/Genesis': { brand: 'Sega', console: 'Mega Drive/Genesis' },
+                'Sega Genesis': { brand: 'Sega', console: 'Mega Drive/Genesis' },
+                'Sega Saturn': { brand: 'Sega', console: 'Saturn' },
+                'Dreamcast': { brand: 'Sega', console: 'Dreamcast' },
+                'Sega Game Gear': { brand: 'Sega', console: 'Game Gear' },
+                'PlayStation': { brand: 'Sony', console: 'PlayStation' },
+                'PlayStation 2': { brand: 'Sony', console: 'PlayStation 2' },
+                'PS2': { brand: 'Sony', console: 'PlayStation 2' },
+                'PSP': { brand: 'Sony', console: 'PSP' },
+                'Xbox': { brand: 'Microsoft', console: 'Xbox' },
+                'Xbox 360': { brand: 'Microsoft', console: 'Xbox 360' },
+            };
+
+            useEffect(() => {
+                // Essayer de récupérer les anciennes données
+                const oldData = localStorage.getItem('retro-games');
+                const newData = localStorage.getItem('retro-games-v2');
+                
+                if (newData) {
+                    setGames(JSON.parse(newData));
+                } else if (oldData) {
+                    // Migration automatique des anciennes données
+                    const oldGames = JSON.parse(oldData);
+                    const migratedGames = oldGames.map(g => ({...g, type: g.type || 'jeu'}));
+                    localStorage.setItem('retro-games-v2', JSON.stringify(migratedGames));
+                    setGames(migratedGames);
+                    alert('✅ Anciennes données récupérées avec succès !');
+                }
+            }, []);
+
+            const saveToStorage = (gamesData) => {
+                localStorage.setItem('retro-games-v2', JSON.stringify(gamesData));
+                setGames(gamesData);
+            };
+
+            const searchIGDB = async (query) => {
+                if (!query || query.length < 2) {
+                    setIgdbResults([]);
+                    return;
+                }
+                setSearchingIGDB(true);
+                try {
+                    const response = await fetch(PROXY_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            endpoint: 'games',
+                            body: `search "${query}"; fields name,cover.url,platforms.name; limit 10;`
+                        })
+                    });
+                    if (!response.ok) throw new Error('Erreur API');
+                    const data = await response.json();
+                    setIgdbResults(data || []);
+                } catch (error) {
+                    console.error('Erreur IGDB:', error);
+                    setIgdbResults([]);
+                } finally {
+                    setSearchingIGDB(false);
+                }
+            };
+
+            const handleIGDBSearchChange = (value) => {
+                setIgdbSearchTerm(value);
+                if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                searchTimeoutRef.current = setTimeout(() => searchIGDB(value), 800);
+            };
+
+            const selectIGDBGame = (game) => {
+                const platformName = game.platforms?.[0]?.name || '';
+                const mapping = platformMapping[platformName] || { brand: '', console: '' };
+                setNewGame({
+                    ...newGame,
+                    title: game.name,
+                    brand: mapping.brand,
+                    console: mapping.console,
+                    cover: game.cover?.url ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}` : ''
+                });
+                setIgdbSearchTerm('');
+                setIgdbResults([]);
+            };
+
+            const searchPriceOnline = (game) => {
+                setSearchingPrice(game?.id || 'new');
+                const searchQuery = (game?.barcode || newGame.barcode) || `${game?.title || newGame.title} ${game?.console || newGame.console}`;
+                const choice = window.confirm(`Rechercher "${game?.title || newGame.title}" sur :\n\nOK = eBay\nAnnuler = PriceCharting`);
+                if (choice) {
+                    window.open(`https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(searchQuery)}`, '_blank');
+                } else {
+                    window.open(`https://www.pricecharting.com/search-products?q=${encodeURIComponent(searchQuery)}&type=videogames`, '_blank');
+                }
+                setTimeout(() => setSearchingPrice(null), 1000);
+            };
+
+            const calculateStats = () => {
+                const totalGames = games.filter(g => g.type === 'jeu' || !g.type).length;
+                const totalAccessories = games.filter(g => g.type === 'accessoire').length;
+                const totalConsoles = games.filter(g => g.type === 'console').length;
+                const totalValue = games.reduce((sum, game) => sum + (parseFloat(game.price) || 0), 0);
+                const byBrand = games.reduce((acc, game) => {
+                    if (game.type === 'jeu' || !game.type) acc[game.brand] = (acc[game.brand] || 0) + 1;
+                    return acc;
+                }, {});
+                const byConsole = games.reduce((acc, game) => {
+                    if (game.type === 'jeu' || !game.type) acc[game.console] = (acc[game.console] || 0) + 1;
+                    return acc;
+                }, {});
+                const gamesWithPrice = games.filter(g => g.price && parseFloat(g.price) > 0).length;
+                return {
+                    totalGames, totalAccessories, totalConsoles, totalValue,
+                    averageValue: gamesWithPrice > 0 ? (totalValue / gamesWithPrice).toFixed(2) : 0,
+                    byBrand, byConsole, gamesWithPrice,
+                    completionRate: games.length > 0 ? ((gamesWithPrice / games.length) * 100).toFixed(1) : 0
+                };
+            };
+
+            const addGame = () => {
+                if (!newGame.title || !newGame.brand || (newGame.type !== 'console' && !newGame.console)) {
+                    alert('Veuillez remplir les champs obligatoires');
+                    return;
+                }
+                const game = { ...newGame, id: Date.now().toString(), dateAdded: new Date().toISOString() };
+                saveToStorage([...games, game]);
+                setNewGame({ title: '', brand: '', console: '', barcode: '', price: '', condition: 'Bon', notes: '', cover: '', type: 'jeu' });
+                setShowAddForm(false);
+            };
+
+            const deleteGame = (id) => {
+                if (window.confirm('Supprimer cet élément ?')) {
+                    saveToStorage(games.filter(g => g.id !== id));
+                }
+            };
+
+            const updateGame = (id, field, value) => {
+                setGames(games.map(g => g.id === id ? { ...g, [field]: value } : g));
+            };
+
+            const saveEdit = (game) => {
+                saveToStorage(games.map(g => g.id === game.id ? game : g));
+                setEditingId(null);
+            };
+
+            const exportToCSV = () => {
+                const headers = ['Type', 'Titre', 'Marque', 'Console', 'Code-barres', 'Prix', 'État', 'Notes', 'Date'];
+                const rows = games.map(g => [g.type||'jeu', g.title, g.brand, g.console||'-', g.barcode||'', g.price||'', g.condition, g.notes||'', new Date(g.dateAdded).toLocaleDateString()]);
+                const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `collection-${new Date().toISOString().split('T')[0]}.csv`;
+                link.click();
+            };
+
+            const importFromCSV = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const lines = e.target.result.split('\n').filter(line => line.trim());
+                    const imported = [];
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = lines[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '')) || [];
+                        imported.push({
+                            id: Date.now().toString() + i,
+                            type: values[0] || 'jeu', title: values[1], brand: values[2], console: values[3],
+                            barcode: values[4], price: values[5], condition: values[6] || 'Bon',
+                            notes: values[7], dateAdded: new Date().toISOString(), cover: ''
+                        });
+                    }
+                    saveToStorage([...games, ...imported]);
+                    alert(`${imported.length} éléments importés !`);
+                };
+                reader.readAsText(file);
+            };
+
+            const filteredGames = games.filter(game => {
+                const search = searchTerm.toLowerCase();
+                const matchesSearch = game.title.toLowerCase().includes(search) || game.brand.toLowerCase().includes(search) ||
+                    (game.console && game.console.toLowerCase().includes(search)) || (game.barcode && game.barcode.includes(search));
+                if (activeTab === 'all') return matchesSearch;
+                if (activeTab === 'consoles') return matchesSearch && game.type === 'console';
+                if (activeTab === 'accessoires') return matchesSearch && game.type === 'accessoire';
+                if (activeBrand) return matchesSearch && game.brand === activeBrand && (game.type === 'jeu' || !game.type);
+                return matchesSearch && (game.type === 'jeu' || !game.type);
+            }).sort((a, b) => a.title.localeCompare(b.title));
+
+            const groupedByConsole = filteredGames.reduce((acc, game) => {
+                const key = game.console || 'Sans console';
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(game);
+                return acc;
+            }, {});
+
+            const stats = calculateStats();
+
+            return (
+                <div className="min-h-screen p-4 md:p-6">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-6 md:p-8 mb-6">
+                            <div className="flex justify-between items-start flex-wrap gap-4">
+                                <div>
+                                    <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">🎮 Ma Collection Rétro</h1>
+                                    <p className="text-blue-200">{stats.totalGames} jeux • {stats.totalConsoles} consoles • {stats.totalAccessories} accessoires • {stats.totalValue.toFixed(2)}€</p>
+                                </div>
+                                <button onClick={() => setShowStats(!showStats)} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-colors">
+                                    📊 {showStats ? 'Masquer' : 'Stats'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {showStats && (
+                            <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-6 mb-6">
+                                <h2 className="text-2xl font-bold text-white mb-4">📊 Statistiques</h2>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                    <div className="stat-card p-4 rounded-xl">
+                                        <div className="text-blue-200 text-sm mb-1">Jeux</div>
+                                        <div className="text-3xl font-bold text-white">{stats.totalGames}</div>
+                                    </div>
+                                    <div className="stat-card p-4 rounded-xl">
+                                        <div className="text-blue-200 text-sm mb-1">Consoles</div>
+                                        <div className="text-3xl font-bold text-purple-300">{stats.totalConsoles}</div>
+                                    </div>
+                                    <div className="stat-card p-4 rounded-xl">
+                                        <div className="text-blue-200 text-sm mb-1">Accessoires</div>
+                                        <div className="text-3xl font-bold text-yellow-300">{stats.totalAccessories}</div>
+                                    </div>
+                                    <div className="stat-card p-4 rounded-xl">
+                                        <div className="text-blue-200 text-sm mb-1">Valeur</div>
+                                        <div className="text-3xl font-bold text-green-300">{stats.totalValue.toFixed(2)}€</div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-white/5 p-4 rounded-xl">
+                                        <h3 className="text-lg font-bold text-white mb-3">Par marque</h3>
+                                        {Object.entries(stats.byBrand).sort((a, b) => b[1] - a[1]).map(([brand, count]) => (
+                                            <div key={brand} className="flex justify-between text-blue-100 mb-2">
+                                                <span>{brand}</span><span className="font-semibold">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="bg-white/5 p-4 rounded-xl">
+                                        <h3 className="text-lg font-bold text-white mb-3">Top Consoles</h3>
+                                        {Object.entries(stats.byConsole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([console, count]) => (
+                                            <div key={console} className="flex justify-between text-blue-100 mb-2">
+                                                <span className="truncate mr-2">{console}</span><span className="font-semibold">{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-4 md:p-6 mb-6">
+                            <div className="flex gap-3 flex-wrap mb-4">
+                                <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="flex-1 min-w-[200px] px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                <button onClick={() => setShowAddForm(!showAddForm)} className="px-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold">➕ Ajouter</button>
+                                <button onClick={exportToCSV} disabled={games.length === 0} className="px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50">📥 Export</button>
+                                <label className="px-4 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold cursor-pointer">
+                                    📤 Import<input type="file" accept=".csv" onChange={importFromCSV} className="hidden" />
+                                </label>
+                            </div>
+
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                <button onClick={() => { setActiveTab('all'); setActiveBrand(null); }}
+                                    className={`tab-button px-4 py-2 rounded-lg font-semibold whitespace-nowrap ${activeTab === 'all' && !activeBrand ? 'active text-white' : 'bg-white/20 text-blue-200'}`}>
+                                    Tous
+                                </button>
+                                {brands.map(brand => (
+                                    <button key={brand} onClick={() => { setActiveTab('brand'); setActiveBrand(brand); }}
+                                        className={`tab-button px-4 py-2 rounded-lg font-semibold whitespace-nowrap ${activeBrand === brand ? 'active text-white' : 'bg-white/20 text-blue-200'}`}>
+                                        {brand}
+                                    </button>
+                                ))}
+                                <button onClick={() => { setActiveTab('consoles'); setActiveBrand(null); }}
+                                    className={`tab-button px-4 py-2 rounded-lg font-semibold whitespace-nowrap ${activeTab === 'consoles' ? 'active text-white' : 'bg-white/20 text-blue-200'}`}>
+                                    🎮 Consoles
+                                </button>
+                                <button onClick={() => { setActiveTab('accessoires'); setActiveBrand(null); }}
+                                    className={`tab-button px-4 py-2 rounded-lg font-semibold whitespace-nowrap ${activeTab === 'accessoires' ? 'active text-white' : 'bg-white/20 text-blue-200'}`}>
+                                    🎯 Accessoires
+                                </button>
+                            </div>
+
+                            {showAddForm && (
+                                <div className="mt-6 p-4 md:p-6 bg-white/20 rounded-xl">
+                                    <h3 className="text-xl font-bold text-white mb-4">Nouvel élément</h3>
+                                    <div className="mb-4">
+                                        <label className="block text-white mb-2 font-semibold">Type</label>
+                                        <select value={newGame.type} onChange={(e) => setNewGame({...newGame, type: e.target.value})}
+                                            className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                                            <option value="jeu">Jeu</option>
+                                            <option value="console">Console</option>
+                                            <option value="accessoire">Accessoire</option>
+                                        </select>
+                                    </div>
+
+                                    {newGame.type === 'jeu' && (
+                                        <div className="mb-4 relative">
+                                            <label className="block text-white mb-2 font-semibold">🔍 Rechercher (IGDB)</label>
+                                            <input type="text" placeholder="Nom du jeu..." value={igdbSearchTerm} onChange={(e) => handleIGDBSearchChange(e.target.value)}
+                                                className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                            {searchingIGDB && <div className="text-blue-200 mt-2">⏳ Recherche...</div>}
+                                            {igdbResults.length > 0 && (
+                                                <div className="absolute z-10 w-full mt-2 bg-white/95 backdrop-blur rounded-lg shadow-xl max-h-96 overflow-y-auto">
+                                                    {igdbResults.map((game) => (
+                                                        <div key={game.id} onClick={() => selectIGDBGame(game)}
+                                                            className="search-result flex items-center gap-3 p-3 border-b border-gray-200 last:border-0">
+                                                            {game.cover?.url && <img src={`https:${game.cover.url.replace('t_thumb', 't_cover_small')}`} alt={game.name} className="game-cover" />}
+                                                            <div>
+                                                                <div className="font-semibold text-gray-900">{game.name}</div>
+                                                                <div className="text-sm text-gray-600">{game.platforms?.map(p => p.name).join(', ')}</div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <input type="text" placeholder="Titre *" value={newGame.title} onChange={(e) => setNewGame({...newGame, title: e.target.value})}
+                                            className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                        <select value={newGame.brand} onChange={(e) => setNewGame({...newGame, brand: e.target.value, console: ''})}
+                                            className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                                            <option value="">Marque *</option>
+                                            {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                                        </select>
+                                        {newGame.type !== 'console' && (
+                                            <select value={newGame.console} onChange={(e) => setNewGame({...newGame, console: e.target.value})} disabled={!newGame.brand}
+                                                className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50">
+                                                <option value="">Console *</option>
+                                                {newGame.brand && consoles[newGame.brand]?.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        )}
+                                        <input type="text" placeholder="Code-barres" value={newGame.barcode} onChange={(e) => setNewGame({...newGame, barcode: e.target.value})}
+                                            className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                        <div className="flex gap-2">
+                                            <input type="text" placeholder="Prix (€)" value={newGame.price} onChange={(e) => setNewGame({...newGame, price: e.target.value})}
+                                                className="flex-1 px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                            <button onClick={() => searchPriceOnline(null)} disabled={!newGame.title}
+                                                className="px-3 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-white font-semibold disabled:opacity-50">🔍</button>
+                                        </div>
+                                        <select value={newGame.condition} onChange={(e) => setNewGame({...newGame, condition: e.target.value})}
+                                            className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                                            {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                        <input type="text" placeholder="Notes" value={newGame.notes} onChange={(e) => setNewGame({...newGame, notes: e.target.value})}
+                                            className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400 md:col-span-2" />
+                                    </div>
+                                    <div className="flex gap-3 mt-4">
+                                        <button onClick={addGame} className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold">💾 Enregistrer</button>
+                                        <button onClick={() => {setShowAddForm(false); setIgdbResults([]); setIgdbSearchTerm('');}} className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold">❌ Annuler</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-6">
+                            {Object.entries(groupedByConsole).sort().map(([consoleName, consoleGames]) => (
+                                <div key={consoleName} className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl overflow-hidden">
+                                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 md:px-6 py-4">
+                                        <h2 className="text-xl md:text-2xl font-bold text-white">{consoleName}</h2>
+                                        <p className="text-blue-100">{consoleGames.length} élément{consoleGames.length > 1 ? 's' : ''}</p>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-white/5">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold">Cover</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold">Titre</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold hidden md:table-cell">Type</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold hidden md:table-cell">Code-barres</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold">Prix</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold hidden md:table-cell">État</th>
+                                                    <th className="px-4 py-3 text-left text-white font-semibold">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {consoleGames.map((game, idx) => (
+                                                    <tr key={game.id} className={`border-t border-white/10 ${idx % 2 === 0 ? 'bg-white/5' : ''}`}>
+                                                        <td className="px-4 py-3">
+                                                            {game.cover && <img src={game.cover} alt={game.title} className="game-cover" />}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {editingId === game.id ? (
+                                                                <input type="text" value={game.title} onChange={(e) => updateGame(game.id, 'title', e.target.value)} className="w-full px-2 py-1 bg-white/20 border border-white/30 rounded text-white" />
+                                                            ) : (
+                                                                <span className="text-white font-medium">{game.title}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 hidden md:table-cell">
+                                                            <span className="text-purple-200 text-sm capitalize">{game.type || 'jeu'}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 hidden md:table-cell">
+                                                            {editingId === game.id ? (
+                                                                <input type="text" value={game.barcode || ''} onChange={(e) => updateGame(game.id, 'barcode', e.target.value)} className="w-full px-2 py-1 bg-white/20 border border-white/30 rounded text-white" />
+                                                            ) : (
+                                                                <span className="text-blue-200 font-mono text-sm">{game.barcode || '-'}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {editingId === game.id ? (
+                                                                <input type="text" value={game.price || ''} onChange={(e) => updateGame(game.id, 'price', e.target.value)} className="w-full px-2 py-1 bg-white/20 border border-white/30 rounded text-white" />
+                                                            ) : (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-green-300 font-semibold">{game.price ? game.price + '€' : '-'}</span>
+                                                                    <button onClick={() => searchPriceOnline(game)} className="text-xs px-2 py-1 bg-orange-500 hover:bg-orange-600 rounded text-white" disabled={searchingPrice === game.id}>
+                                                                        {searchingPrice === game.id ? '⏳' : '🔍'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 hidden md:table-cell">
+                                                            {editingId === game.id ? (
+                                                                <select value={game.condition} onChange={(e) => updateGame(game.id, 'condition', e.target.value)} className="w-full px-2 py-1 bg-white/20 border border-white/30 rounded">
+                                                                    {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                                                                </select>
+                                                            ) : (
+                                                                <span className="text-yellow-200">{game.condition}</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex gap-2">
+                                                                {editingId === game.id ? (
+                                                                    <>
+                                                                        <button onClick={() => saveEdit(game)} className="px-3 py-1 bg-green-500 hover:bg-green-600 rounded text-white text-sm">💾</button>
+                                                                        <button onClick={() => setEditingId(null)} className="px-3 py-1 bg-gray-500 hover:bg-gray-600 rounded text-white text-sm">❌</button>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <button onClick={() => setEditingId(game.id)} className="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-white text-sm">✏️</button>
+                                                                        <button onClick={() => deleteGame(game.id)} className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-white text-sm">🗑️</button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ))}
+                            {filteredGames.length === 0 && (
+                                <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-12 text-center">
+                                    <p className="text-white text-xl">Aucun élément trouvé. Ajoutez votre premier jeu !</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<RetroGamesApp />, document.getElementById('app'));
+    </script>
+</body>
+</html>
