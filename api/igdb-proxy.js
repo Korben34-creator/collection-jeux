@@ -1,11 +1,8 @@
-// netlify/functions/igdb-proxy.js
-const fetch = require('node-fetch');
-
+// api/igdb-proxy.js
 let cachedToken = null;
 let tokenExpiry = 0;
 
 async function getAccessToken() {
-  // Vérifier si le token en cache est encore valide
   if (cachedToken && Date.now() < tokenExpiry) {
     return cachedToken;
   }
@@ -20,35 +17,28 @@ async function getAccessToken() {
 
   const data = await response.json();
   cachedToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in - 300) * 1000; // 5 min de marge
+  tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
   
   return cachedToken;
 }
 
-exports.handler = async (event) => {
+export default async function handler(req, res) {
   // CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 
   // Handle preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
 
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method not allowed' }),
-    };
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { endpoint, body } = JSON.parse(event.body);
+    const { endpoint, body } = req.body;
     const token = await getAccessToken();
     const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 
@@ -63,18 +53,9 @@ exports.handler = async (event) => {
     });
 
     const data = await response.json();
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify(data),
-    };
+    return res.status(200).json(data);
   } catch (error) {
     console.error('Error:', error);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: error.message }),
-    };
+    return res.status(500).json({ error: error.message });
   }
-};
+}
