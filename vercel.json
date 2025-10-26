@@ -1,10 +1,31 @@
 {
+  "version": 2,
   "functions": {
-    "netlify/functions/*.js": {
-      "runtime": "nodejs18.x"
+    "api/**/*.js": {
+      "runtime": "nodejs20.x"
     }
-  },
-  "rewrites": [
-    { "source": "/.netlify/functions/(.*)", "destination": "/api/$1" }
-  ]
+  }
 }
+```
+
+---
+
+## 📝 Étapes exactes :
+
+1. Sur GitHub, à la racine de votre repository
+2. Cliquez sur **"Add file"** → **"Create new file"**
+3. Nom du fichier : `vercel.json`
+4. Collez le contenu ci-dessus
+5. **Commit new file**
+6. Attendez le redéploiement automatique (1-2 minutes)
+
+---
+
+## ✅ Structure finale attendue sur GitHub :
+```
+📁 collection-jeux
+├── 📄 index.html
+├── 📄 vercel.json      ← NOUVEAU
+├── 📄 package.json (vide ou supprimé)
+└── 📁 api/
+    └── 📄 igdb-proxy.js
