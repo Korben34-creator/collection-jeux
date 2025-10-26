@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "netlify/functions/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "rewrites": [
+    { "source": "/.netlify/functions/(.*)", "destination": "/api/$1" }
+  ]
+}
